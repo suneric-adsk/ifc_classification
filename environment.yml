@@ -1,0 +1,26 @@
+name: ifcnet
+channels:
+  - pytorch
+  - nvidia
+  - lambouj
+  - conda-forge
+  - dglteam/label/cu121
+  - defaults
+dependencies:
+  - pytorch=2.1.2=py3.10_cuda12.1_cudnn8.9.2_0
+  - dgl=2.0.0.cu121=py310_0
+  - pip=23.2.1
+  - occwl=3.0.0=py_0
+  - pip:
+    - lightning==2.1.0
+    - torch-geometric==2.3.1
+    - torchmetrics==1.6.0
+    - torchvision==0.16.0
+    - numpy==1.23.5
+    - tensorboard==2.18.0
+    - pillow==11.0.0
+    - python-dateutil==2.9.0
+    - scikit-learn==1.6.0
+    - pandas==2.2.3
+    - seaborn==0.13.2
+    - pandas==2.2.3
