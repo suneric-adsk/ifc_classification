@@ -10,9 +10,10 @@ from occwl.io import load_step
 from occwl.compound import Compound
 from occwl.solid import Solid
 from occwl.shell import Shell
-
-from .graph_builder import build_graph
+import dgl
+from dgl.data.utils import load_graphs
 from scipy.spatial.transform import Rotation
+from torch import FloatTensor
 
 def get_random_rotation():
     """Get a random rotation in 90 degree increments along the canonical axes"""
@@ -40,21 +41,21 @@ def rotate_uvgrid(inp, rotation):
     return inp
 
 """
-STEP dataset for test only
+Brep dataset for test only
 """
-class STEPDataSet(Dataset):
+class BrepDataSet(Dataset):
     def __init__(self, root_dir, class_names, split="train", mode="train"):
         self.class_names = class_names
         self.root_dir = root_dir
         self.split = split
-        self.file_paths = sorted(root_dir.glob(f"**/{split}/*.stp"))
-        self.rotation = None if mode=="train" else get_random_rotation()
+        self.file_paths = sorted(root_dir.glob(f"**/{split}/*.bin"))
+        self.rotation = get_random_rotation() if mode=="train" else None
 
 
     def load_files(self, root_dir):
         """Load files in root_dir"""
         files = os.listdir(root_dir)
-        return [f for f in files if f.endswith(".stp") or f.endswith(".step")]
+        return [f for f in files if f.endswith(".bin")]
         
     def __len__(self):
         return len(self.file_paths)
@@ -63,27 +64,27 @@ class STEPDataSet(Dataset):
         path = self.file_paths[idx]
         class_name = path.parts[-3]
         label = self.class_names.index(class_name)
-        shapes = load_step(path)
-        if len(shapes) == 0:
-            return None, label
-        shape = shapes[0]
-        shape.set_transform_to_identity()
-        graph = build_graph(shape, 10, 10, 10, True)
-        if self.rotation:
+        graph = load_graphs(str(path))[0][0]
+        graph.ndata["x"] = graph.ndata["x"].type(FloatTensor)
+        graph.edata["x"] = graph.edata["x"].type(FloatTensor)
+        if self.rotation is not None:
             graph.ndata["x"] = rotate_uvgrid(graph.ndata["x"], self.rotation)
             graph.edata["x"] = rotate_uvgrid(graph.edata["x"], self.rotation)
-
         return graph, label
     
+def _collate(batch):
+    batch_graph = dgl.batch([data[0] for data in batch])
+    batch_label = torch.as_tensor([data[1] for data in batch])
+    return batch_graph, batch_label
 
 def get_uvnet_dataloader(data_root, class_names, batch_size, eval_on_test=False, mode="train"):
     
     if eval_on_test:
-        train_dataset = STEPDataSet(data_root, class_names, split="train", mode=mode)
-        val_dataset = STEPDataSet(data_root, class_names, split="test", mode=mode)
+        train_dataset = BrepDataSet(data_root, class_names, split="train", mode=mode)
+        val_dataset = BrepDataSet(data_root, class_names, split="test", mode=mode)
     else:
-        train_dataset = STEPDataSet(data_root, class_names, split="train", mode=mode)
-        val_dataset = STEPDataSet(data_root, class_names, split="train", mode=mode)
+        train_dataset = BrepDataSet(data_root, class_names, split="train", mode=mode)
+        val_dataset = BrepDataSet(data_root, class_names, split="train", mode=mode)
         np.random.seed(42)
         perm = np.random.permutation(range(len(train_dataset)))
         train_len = int(0.7*len(train_dataset))
@@ -93,6 +94,6 @@ def get_uvnet_dataloader(data_root, class_names, batch_size, eval_on_test=False,
     print(f"Train size: {len(train_dataset)}")
     print(f"Val size: {len(val_dataset)}")
 
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=8)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=8)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, collate_fn=_collate, shuffle=True, num_workers=8)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, collate_fn=_collate, num_workers=8)
     return train_loader, val_loader
