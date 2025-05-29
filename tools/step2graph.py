@@ -87,28 +87,29 @@ def process_one_file(arguments):
         print("no solid found in the step file")
         return 
     
-    graph_list, node_count = [], []
+    graph_list = []
     for i in range(len(solids)):
         solid = solids[0]
         solid.set_transform_to_identity()
         graph = build_graph(solid, args.curv_u_samples, args.surf_u_samples, args.surf_v_samples, center_and_scale=True)
         graph_list.append(graph)
-        node_count.append(graph.num_nodes())
 
-    counts_with_indices = [(count, i) for i, count in enumerate(node_count)]
-    count_sorted = sorted(counts_with_indices, key=lambda x: x[0], reverse=True)
+    grpah_sorted = sorted(graph_list, key=lambda x: (x.num_nodes(), x.num_edges()), reverse=True)
 
     # combined the most complex shapes
     combined_count = 0
-    max_count = 5120 # for the limit of GPU memory
+    max_count = 6144 # for the limit of GPU memory
     combined_graph = []
-    for count, idx in count_sorted:
-        if combined_count + count < max_count:
-            combined_count += count
-            combined_graph.append(graph_list[idx])
+    for g in grpah_sorted:
+        if g.num_nodes() > max_count:
+            print("graph too large, skip")
+            continue
+
+        if combined_count + g.num_nodes() < max_count:
+            combined_count += g.num_nodes()
+            combined_graph.append(g)
         else:
-            if combined_count > 0:
-                break
+            break
     
     if len(combined_graph) == 0:
         print("no graph found")
