@@ -27,12 +27,17 @@ python classification.py train --type view --epochs 30
 ```
 For DGCNN
 ```
-python classification.py train --type ply --epochs 250
+python classification.py train --type point --epochs 300
 ```
 
 For MeshNet
 ```
-python classification.py train --type mesh --epochs 150
+python classification.py train --type mesh --epochs 300
+```
+
+For UVNet
+```
+python classification.py train --type brep --epochs 300
 ```
 
 The logs and checkpoints will be stored in "results" folder and can be monitored with Tensorboard
