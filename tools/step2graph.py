@@ -64,7 +64,7 @@ def build_graph(solid, crv_sample, srf_sample_u, srf_sample_v, center_and_scale=
         graph_edge_feat[...,:3] -= center
         graph_edge_feat[...,:3] *= scale
 
-    # convert face0-adj graph to DGL format
+    # convert face-adj graph to DGL format
     edges = list(graph.edges)
     src = [e[0] for e in edges]
     dst = [e[1] for e in edges]
@@ -161,24 +161,24 @@ def main():
     parser.add_argument("input", type=str, help="Input folder of STEP files")
     parser.add_argument("output", type=str, help="Output folder of DGL graph BIN files")
     parser.add_argument(
-        "--curv_u_samples", type=int, default=15, help="Number of samples on each curve"
+        "--curv_u_samples", type=int, default=10, help="Number of samples on each curve"
     )
     parser.add_argument(
         "--surf_u_samples",
         type=int,
-        default=15,
+        default=10,
         help="Number of samples on each surface along the u-direction",
     )
     parser.add_argument(
         "--surf_v_samples",
         type=int,
-        default=15,
+        default=10,
         help="Number of samples on each surface along the v-direction",
     )
     parser.add_argument(
         "--num_processes",
         type=int,
-        default=8,
+        default=12,
         help="Number of processes to use",
     )
     args = parser.parse_args()

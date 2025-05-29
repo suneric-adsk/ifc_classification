@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from .classifier import NonLinearClassifier
 
 def _knn(x, k):
     # compute pairwise distance of input points
@@ -37,7 +38,7 @@ def _graph_feature(x, k=20, idx=None):
     return feature
 
 class DGCNN(nn.Module):
-    def __init__(self, k, d_embed, dropout, output_channels=40):
+    def __init__(self, k, d_embed=512, dropout=0.3, output_channels=40):
         super(DGCNN, self).__init__()
 
         self.k = k
@@ -63,23 +64,28 @@ class DGCNN(nn.Module):
             nn.LeakyReLU(negative_slope=0.2)
         )
         self.conv5 = nn.Sequential(
-            nn.Conv1d(512, d_embed, kernel_size=1, bias=False),
-            nn.BatchNorm1d(d_embed),
+            nn.Conv1d(512, 1024, kernel_size=1, bias=False),
+            nn.BatchNorm1d(1024),
             nn.LeakyReLU(negative_slope=0.2)
         )
-        self.linear1 = nn.Sequential(
-            nn.Linear(d_embed*2, 512, bias=False),
-            nn.BatchNorm1d(512),
+        self.linear = nn.Sequential(
+            nn.Linear(2048, d_embed, bias=False),
+            nn.BatchNorm1d(d_embed),
             nn.LeakyReLU(negative_slope=0.2),
             nn.Dropout(p=dropout)
         )
-        self.linear2 = nn.Sequential(
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.LeakyReLU(negative_slope=0.2),
-            nn.Dropout(p=dropout)
+        # self.linear2 = nn.Sequential(
+        #     nn.Linear(512, 256),
+        #     nn.BatchNorm1d(256),
+        #     nn.LeakyReLU(negative_slope=0.2),
+        #     nn.Dropout(p=dropout)
+        # )
+        # self.linear3 = nn.Linear(256, output_channels)
+        self.classifier = NonLinearClassifier(
+            input_dim=d_embed, 
+            num_classes=output_channels, 
+            dropout=dropout
         )
-        self.linear3 = nn.Linear(256, output_channels)
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -106,11 +112,8 @@ class DGCNN(nn.Module):
         x2 = F.adaptive_avg_pool1d(x, 1).view(batch_size, -1)
 
         x = torch.cat((x1, x2), dim=1)
-        x = self.linear1(x) # (1024, 512)
-        
-        # mlp layers
-        x = self.linear2(x) # (512, 256)
-        x = self.linear3(x) # (256, n_classes)
-        return x
+        feat = self.linear(x)
+        y = self.classifier(feat)
+        return y, feat
 
 

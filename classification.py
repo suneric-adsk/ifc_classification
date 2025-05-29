@@ -23,7 +23,7 @@ from models.ifcnet_uvnet import IFCNet_UVNet
 
 parser = argparse.ArgumentParser("IFC Classification")
 parser.add_argument("traintest", choices=("train", "test"))
-parser.add_argument("--type", type=str, default="view") # ply, mesh
+parser.add_argument("--type", type=str, default="view") # point, mesh, brep, view
 parser.add_argument("--ckpt", type=str, default=None)
 parser.add_argument("--epochs", type=int, default=300)
 
@@ -61,9 +61,7 @@ trainer = Trainer(
     gradient_clip_val=1.0
 )
 
-if args.type == "ply":
-    with open("./trained/dgcnn_model/DGCNNParams.json", "r") as f:
-        config = json.load(f)
+if args.type == "point":
 
     print("DGCNN training and test")
     model = IFCNet_DGCNN() 
@@ -72,7 +70,7 @@ if args.type == "ply":
         train_loader, val_loader = get_dgcnn_dataloader(
             data_root=data_path.absolute(),
             class_names=class_names,
-            batch_size=int(config["batch_size"]),
+            batch_size=8,
             eval_on_test=False
         )
         trainer.fit(model, train_loader, val_loader)
@@ -82,16 +80,14 @@ if args.type == "ply":
         _, test_loader = get_dgcnn_dataloader(
             data_root=data_path.absolute(),
             class_names=class_names,
-            batch_size=int(config["batch_size"]),
+            batch_size=8,
             eval_on_test=True
         )
         trainer.test(model, dataloaders=[test_loader], ckpt_path=args.ckpt, verbose=False)
 
 elif args.type == "view":
-    with open("./trained/mvcnn_model/MVCNNParams.json", "r") as f:
-        config = json.load(f)
-
     print("MVCNN training and test")
+    num_view = 12
     data_path = pathlib.Path("./dataset/IFCNetCorePng/IFCNetCore")
     if args.traintest == "train":
         # 1st stage
@@ -102,7 +98,7 @@ elif args.type == "view":
         sv_train_loader, sv_val_loader = get_svcnn_dataloader(
             data_root=data_path.absolute(),
             class_names=class_names,
-            batch_size=int(config["batch_size"]),
+            batch_size=64,
             eval_on_test=False,
             mode="train"
         )
@@ -119,17 +115,16 @@ elif args.type == "view":
         sv_trainer.fit(svmodel, sv_train_loader, sv_val_loader)
 
         # 2nd stage
-        n_view = int(config["num_views"])
-        mvcnn = MVCNN(svmodel.model, n_view=n_view)
+        mvcnn = MVCNN(svmodel.model, n_view=num_view)
         mvmodel = IFCNet_MVCNN()
-        mvmodel.set_model(model=svmodel.model, n_view=12)
+        mvmodel.set_model(model=svmodel.model, n_view=num_view)
         del svmodel
 
         mv_train_loader, mv_val_loader = get_mvcnn_dataloader(
             data_root=data_path.absolute(),
             class_names=class_names,
-            batch_size=int(config["batch_size"]/n_view),
-            n_view=n_view,
+            batch_size=16,
+            n_view=num_view,
             eval_on_test=False,
             mode="train"
         )
@@ -139,17 +134,14 @@ elif args.type == "view":
         _, test_loader = get_mvcnn_dataloader(
             data_root=data_path.absolute(),
             class_names=class_names,
-            batch_size=int(config["batch_size"]/config["num_views"]),
-            n_view=int(config["num_views"]),
+            batch_size=16,
+            n_view=num_view,
             eval_on_test=True,
             mode="test"
         )
         trainer.test(model, dataloaders=[test_loader], ckpt_path=args.ckpt, verbose=False)
 
 elif args.type == "mesh":
-    with open("./trained/meshnet_model/MeshNetParams.json", "r") as f:
-        config = json.load(f)
-
     print("MeshNet training and test")
     model = IFCNet_MeshNet() 
     data_path = pathlib.Path("./dataset/IFCNetCoreNpz/IFCNetCore")
@@ -157,7 +149,7 @@ elif args.type == "mesh":
         train_loader, val_loader = get_meshnet_dataloader(
             data_root=data_path.absolute(),
             class_names=class_names,
-            batch_size=int(config["batch_size"]),
+            batch_size=32,
             eval_on_test=False
         )
         trainer.fit(model, train_loader, val_loader)
@@ -167,7 +159,7 @@ elif args.type == "mesh":
         _, test_loader = get_meshnet_dataloader(
             data_root=data_path.absolute(),
             class_names=class_names,
-            batch_size=int(config["batch_size"]),
+            batch_size=32,
             eval_on_test=True
         )
         trainer.test(model, dataloaders=[test_loader], ckpt_path=args.ckpt, verbose=False)

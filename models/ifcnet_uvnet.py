@@ -3,7 +3,7 @@ import torch
 import lightning as L
 import torch.nn.functional as F
 from sklearn.metrics import (accuracy_score, balanced_accuracy_score, precision_score, recall_score, f1_score, confusion_matrix)
-from .modules.uvnet import UVNetClassifier
+from .modules.uvnet import BrepUVNet
 from .utils.plot_results import plot_confusion_matrix
 import pathlib
 
@@ -11,7 +11,7 @@ def _uvnet_loss(pred, label):
     loss = F.cross_entropy(pred, label, reduction="mean")
     return loss 
 
-def permute_graph(graph):
+def _permute_graph(graph):
     graph.ndata["x"] = graph.ndata["x"].permute(0, 3, 1, 2)
     graph.edata["x"] = graph.edata["x"].permute(0, 2, 1)
     return graph
@@ -34,11 +34,14 @@ class IFCNet_UVNet(L.LightningModule):
                            "IfcPipeFitting", "IfcPipeSegment", "IfcPlate", "IfcRailing", "IfcSanitaryTerminal", 
                            "IfcSlab", "IfcSpaceHeater", "IfcStair", "IfcValve", "IfcWall"]
         
-        self.model = UVNetClassifier(num_classes=len(self.classnames))
+        self.model = BrepUVNet(
+            d_embed=512, dropout=0.3, num_classes=len(self.classnames)
+        )
+
         self.learning_rate = 1e-4
         self.weight_decay = 2e-5
         self.loss_fn = _uvnet_loss
-        self.dataload_cb = permute_graph
+        self.dataload_cb = _permute_graph
 
         self.train_probs = []
         self.train_labels = []
@@ -57,7 +60,7 @@ class IFCNet_UVNet(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
         loss = self.loss_fn(pred=y_hat, label=y)
         
         probs = F.softmax(y_hat, dim=1)
@@ -71,7 +74,7 @@ class IFCNet_UVNet(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
         loss = self.loss_fn(pred=y_hat, label=y)
 
         probs = F.softmax(y_hat, dim=1)
@@ -85,7 +88,7 @@ class IFCNet_UVNet(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
 
         probs = F.softmax(y_hat, dim=1)
         self.valid_probs.append(probs.cpu().detach().numpy())

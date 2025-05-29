@@ -3,21 +3,9 @@ from torch import nn
 import torch.nn.functional as F
 from dgl.nn.pytorch.conv import NNConv
 from dgl.nn.pytorch.glob import MaxPooling
+from .classifier import NonLinearClassifier
 
 def _conv1d(in_channels, out_channels, kernel_size=3, padding=0, bias=False):
-    """
-    Helper function to create a 1D convolutional layer with batchnorm and LeakyReLU activation
-
-    Args:
-        in_channels (int): Input channels
-        out_channels (int): Output channels
-        kernel_size (int, optional): Size of the convolutional kernel. Defaults to 3.
-        padding (int, optional): Padding size on each side. Defaults to 0.
-        bias (bool, optional): Whether bias is used. Defaults to False.
-
-    Returns:
-        nn.Sequential: Sequential contained the Conv1d, BatchNorm1d and LeakyReLU layers
-    """
     return nn.Sequential(
         nn.Conv1d(
             in_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=bias
@@ -27,27 +15,10 @@ def _conv1d(in_channels, out_channels, kernel_size=3, padding=0, bias=False):
     )
 
 
-def _conv2d(in_channels, out_channels, kernel_size, padding=0, bias=False):
-    """
-    Helper function to create a 2D convolutional layer with batchnorm and LeakyReLU activation
-
-    Args:
-        in_channels (int): Input channels
-        out_channels (int): Output channels
-        kernel_size (int, optional): Size of the convolutional kernel. Defaults to 3.
-        padding (int, optional): Padding size on each side. Defaults to 0.
-        bias (bool, optional): Whether bias is used. Defaults to False.
-
-    Returns:
-        nn.Sequential: Sequential contained the Conv2d, BatchNorm2d and LeakyReLU layers
-    """
+def _conv2d(in_channels, out_channels, kernel_size=3, padding=0, bias=False):
     return nn.Sequential(
         nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size=kernel_size,
-            padding=padding,
-            bias=bias,
+            in_channels, out_channels, kernel_size=kernel_size, padding=padding, bias=bias,
         ),
         nn.BatchNorm2d(out_channels),
         nn.LeakyReLU(),
@@ -63,20 +34,8 @@ def _fc(in_features, out_features, bias=False):
 
 
 class _MLP(nn.Module):
-    """"""
 
     def __init__(self, num_layers, input_dim, hidden_dim, output_dim):
-        """
-        MLP with linear output
-        Args:
-            num_layers (int): The number of linear layers in the MLP
-            input_dim (int): Input feature dimension
-            hidden_dim (int): Hidden feature dimensions for all hidden layers
-            output_dim (int): Output feature dimension
-
-        Raises:
-            ValueError: If the given number of layers is <1
-        """
         super(_MLP, self).__init__()
         self.linear_or_not = True  # default is linear model
         self.num_layers = num_layers
@@ -116,17 +75,6 @@ class _MLP(nn.Module):
 
 class UVNetCurveEncoder(nn.Module):
     def __init__(self, in_channels=6, output_dims=64):
-        """
-        This is the 1D convolutional network that extracts features from the B-rep edge
-        geometry described as 1D UV-grids (see Section 3.2, Curve & surface convolution
-        in paper)
-
-        Args:
-            in_channels (int, optional): Number of channels in the edge UV-grids. By default
-                                         we expect 3 channels for point coordinates and 3 for
-                                         curve tangents. Defaults to 6.
-            output_dims (int, optional): Output curve embedding dimension. Defaults to 64.
-        """
         super(UVNetCurveEncoder, self).__init__()
         self.in_channels = in_channels
         self.conv1 = _conv1d(in_channels, 64, kernel_size=3, padding=1, bias=False)
@@ -157,26 +105,10 @@ class UVNetCurveEncoder(nn.Module):
 
 
 class UVNetSurfaceEncoder(nn.Module):
-    def __init__(
-        self,
-        in_channels=7,
-        output_dims=64,
-    ):
-        """
-        This is the 2D convolutional network that extracts features from the B-rep face
-        geometry described as 2D UV-grids (see Section 3.2, Curve & surface convolution
-        in paper)
-
-        Args:
-            in_channels (int, optional): Number of channels in the edge UV-grids. By default
-                                         we expect 3 channels for point coordinates and 3 for
-                                         surface normals and 1 for the trimming mask. Defaults
-                                         to 7.
-            output_dims (int, optional): Output surface embedding dimension. Defaults to 64.
-        """
+    def __init__(self, in_channels=7, output_dims=64,):
         super(UVNetSurfaceEncoder, self).__init__()
         self.in_channels = in_channels
-        self.conv1 = _conv2d(in_channels, 64, 3, padding=1, bias=False)
+        self.conv1 = _conv2d(in_channels, 64, kernel_size=3, padding=1, bias=False)
         self.conv2 = _conv2d(64, 128, 3, padding=1, bias=False)
         self.conv3 = _conv2d(128, 256, 3, padding=1, bias=False)
         self.final_pool = nn.AdaptiveAvgPool2d(1)
@@ -205,24 +137,8 @@ class UVNetSurfaceEncoder(nn.Module):
 
 class _EdgeConv(nn.Module):
     def __init__(
-        self,
-        edge_feats,
-        out_feats,
-        node_feats,
-        num_mlp_layers=2,
-        hidden_mlp_dim=64,
+        self, edge_feats, out_feats, node_feats, num_mlp_layers=2, hidden_mlp_dim=64
     ):
-        """
-        This module implements Eq. 2 from the paper where the edge features are
-        updated using the node features at the endpoints.
-
-        Args:
-            edge_feats (int): Input edge feature dimension
-            out_feats (int): Output feature deimension
-            node_feats (int): Input node feature dimension
-            num_mlp_layers (int, optional): Number of layers used in the MLP. Defaults to 2.
-            hidden_mlp_dim (int, optional): Hidden feature dimension in the MLP. Defaults to 64.
-        """
         super(_EdgeConv, self).__init__()
         self.proj = _MLP(1, node_feats, hidden_mlp_dim, edge_feats)
         self.mlp = _MLP(num_mlp_layers, edge_feats, hidden_mlp_dim, out_feats)
@@ -240,24 +156,8 @@ class _EdgeConv(nn.Module):
 
 class _NodeConv(nn.Module):
     def __init__(
-        self,
-        node_feats,
-        out_feats,
-        edge_feats,
-        num_mlp_layers=2,
-        hidden_mlp_dim=64,
+        self, node_feats, out_feats, edge_feats, num_mlp_layers=2, hidden_mlp_dim=64,
     ):
-        """
-        This module implements Eq. 1 from the paper where the node features are
-        updated using the neighboring node and edge features.
-
-        Args:
-            node_feats (int): Input edge feature dimension
-            out_feats (int): Output feature deimension
-            node_feats (int): Input node feature dimension
-            num_mlp_layers (int, optional): Number of layers used in the MLP. Defaults to 2.
-            hidden_mlp_dim (int, optional): Hidden feature dimension in the MLP. Defaults to 64.
-        """
         super(_NodeConv, self).__init__()
         self.gconv = NNConv(
             in_feats=node_feats,
@@ -280,28 +180,8 @@ class _NodeConv(nn.Module):
 
 class UVNetGraphEncoder(nn.Module):
     def __init__(
-        self,
-        input_dim,
-        input_edge_dim,
-        output_dim,
-        hidden_dim=64,
-        learn_eps=True,
-        num_layers=3,
-        num_mlp_layers=2,
+        self, input_dim, input_edge_dim, output_dim, hidden_dim=64, learn_eps=True, num_layers=3, num_mlp_layers=2,
     ):
-        """
-        This is the graph neural network used for message-passing features in the
-        face-adjacency graph.  (see Section 3.2, Message passing in paper)
-
-        Args:
-            input_dim ([type]): [description]
-            input_edge_dim ([type]): [description]
-            output_dim ([type]): [description]
-            hidden_dim (int, optional): [description]. Defaults to 64.
-            learn_eps (bool, optional): [description]. Defaults to True.
-            num_layers (int, optional): [description]. Defaults to 3.
-            num_mlp_layers (int, optional): [description]. Defaults to 2.
-        """
         super(UVNetGraphEncoder, self).__init__()
         self.num_layers = num_layers
         self.learn_eps = learn_eps
@@ -368,97 +248,25 @@ class UVNetGraphEncoder(nn.Module):
 
         return out, score_over_layer
 
-class _NonLinearClassifier(nn.Module):
-    def __init__(self, input_dim, num_classes, dropout=0.3):
-        """
-        A 3-layer MLP with linear outputs
 
-        Args:
-            input_dim (int): Dimension of the input tensor 
-            num_classes (int): Dimension of the output logits
-            dropout (float, optional): Dropout used after each linear layer. Defaults to 0.3.
-        """
-        super().__init__()
-        self.linear1 = nn.Linear(input_dim, 512, bias=False)
-        self.bn1 = nn.BatchNorm1d(512)
-        self.dp1 = nn.Dropout(p=dropout)
-        self.linear2 = nn.Linear(512, 256, bias=False)
-        self.bn2 = nn.BatchNorm1d(256)
-        self.dp2 = nn.Dropout(p=dropout)
-        self.linear3 = nn.Linear(256, num_classes)
-
-        for m in self.modules():
-            self.weights_init(m)
-
-    def weights_init(self, m):
-        if isinstance(m, nn.Linear):
-            torch.nn.init.kaiming_uniform_(m.weight.data)
-            if m.bias is not None:
-                m.bias.data.fill_(0.0)
-
-    def forward(self, inp):
-        """
-        Forward pass
-
-        Args:
-            inp (torch.tensor): Inputs features to be mapped to logits
-                                (batch_size x input_dim)
-
-        Returns:
-            torch.tensor: Logits (batch_size x num_classes)
-        """
-        x = F.relu(self.bn1(self.linear1(inp)))
-        x = self.dp1(x)
-        x = F.relu(self.bn2(self.linear2(x)))
-        x = self.dp2(x)
-        x = self.linear3(x)
-        return x
-
-
-###############################################################################
-# Classification model
-###############################################################################
-
-
-class UVNetClassifier(nn.Module):
+class BrepUVNet(nn.Module):
     """
     UV-Net solid classification model
     """
     def __init__(
-        self,
-        num_classes,
-        crv_emb_dim=64,
-        srf_emb_dim=64,
-        graph_emb_dim=128,
-        dropout=0.3,
+        self, crv_emb_dim=64, srf_emb_dim=64, d_embed=512, dropout=0.3, num_classes=40
     ):
-        """
-        Initialize the UV-Net solid classification model
-        
-        Args:
-            num_classes (int): Number of classes to output
-            crv_emb_dim (int, optional): Embedding dimension for the 1D edge UV-grids. Defaults to 64.
-            srf_emb_dim (int, optional): Embedding dimension for the 2D face UV-grids. Defaults to 64.
-            graph_emb_dim (int, optional): Embedding dimension for the graph. Defaults to 128.
-            dropout (float, optional): Dropout for the final non-linear classifier. Defaults to 0.3.
-        """
         super().__init__()
         self.curv_encoder = UVNetCurveEncoder(in_channels=6, output_dims=crv_emb_dim)
         self.surf_encoder = UVNetSurfaceEncoder(in_channels=7, output_dims=srf_emb_dim)
-        self.graph_encoder = UVNetGraphEncoder(srf_emb_dim, crv_emb_dim, graph_emb_dim)
-        self.clf = _NonLinearClassifier(graph_emb_dim, num_classes, dropout)
+        self.graph_encoder = UVNetGraphEncoder(input_dim=srf_emb_dim, input_edge_dim=crv_emb_dim, output_dim=d_embed)
+        self.classifier  = NonLinearClassifier(
+            input_dim=d_embed, 
+            num_classes=num_classes, 
+            dropout=dropout
+        )
 
     def forward(self, batched_graph):
-        """
-        Forward pass
-
-        Args:
-            batched_graph (dgl.Graph): A batched DGL graph containing the face 2D UV-grids in node features
-                                       (ndata['x']) and 1D edge UV-grids in the edge features (edata['x']).
-
-        Returns:
-            torch.tensor: Logits (batch_size x num_classes)
-        """
         # Input features
         input_crv_feat = batched_graph.edata["x"]
         input_srf_feat = batched_graph.ndata["x"]
@@ -467,9 +275,9 @@ class UVNetClassifier(nn.Module):
         hidden_srf_feat = self.surf_encoder(input_srf_feat)
         # Message pass and compute per-face(node) and global embeddings
         # Per-face embeddings are ignored during solid classification
-        _, graph_emb = self.graph_encoder(
+        _, feat = self.graph_encoder(
             batched_graph, hidden_srf_feat, hidden_crv_feat
         )
         # Map to logits
-        out = self.clf(graph_emb)
-        return out
+        y = self.classifier(feat)
+        return y, feat

@@ -22,11 +22,9 @@ class IFCNet_MeshNet(L.LightningModule):
                            "IfcSlab", "IfcSpaceHeater", "IfcStair", "IfcValve", "IfcWall"]
 
         self.model = MeshNet(
-            n_kernel=64,
-            sigma=0.3,
-            aggregation_method="Average",
-            output_channels=len(self.classnames)
+            n_kernel=64, sigma=0.3, d_embed=512, dropout=0.3, output_channels=len(self.classnames)
         )
+
         self.learning_rate = 1.25e-4
         self.weight_decay = 2.85e-4
         self.loss_fn = _meshnet_loss
@@ -49,7 +47,7 @@ class IFCNet_MeshNet(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
         loss = self.loss_fn(pred=y_hat, label=y)
         
         probs = F.softmax(y_hat, dim=1)
@@ -63,7 +61,7 @@ class IFCNet_MeshNet(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
         loss = self.loss_fn(pred=y_hat, label=y)
 
         probs = F.softmax(y_hat, dim=1)
@@ -77,7 +75,7 @@ class IFCNet_MeshNet(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
 
         probs = F.softmax(y_hat, dim=1)
         self.valid_probs.append(probs.cpu().detach().numpy())

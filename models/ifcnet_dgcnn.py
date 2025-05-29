@@ -38,7 +38,10 @@ class IFCNet_DGCNN(L.LightningModule):
                            "IfcPipeFitting", "IfcPipeSegment", "IfcPlate", "IfcRailing", "IfcSanitaryTerminal", 
                            "IfcSlab", "IfcSpaceHeater", "IfcStair", "IfcValve", "IfcWall"]
 
-        self.model = DGCNN(k=40, d_embed=1024, dropout=0.5, output_channels=len(self.classnames))
+        self.model = DGCNN(
+            k=40, d_embed=512, dropout=0.3, output_channels=len(self.classnames)
+        )
+
         self.learning_rate = 7e-4
         self.weight_decay = 3e-4
         self.loss_fn = _dgcnn_loss
@@ -61,7 +64,7 @@ class IFCNet_DGCNN(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
         loss = self.loss_fn(pred=y_hat, label=y)
         
         probs = F.softmax(y_hat, dim=1)
@@ -75,7 +78,7 @@ class IFCNet_DGCNN(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
         loss = self.loss_fn(pred=y_hat, label=y)
 
         probs = F.softmax(y_hat, dim=1)
@@ -89,7 +92,7 @@ class IFCNet_DGCNN(L.LightningModule):
         x, y = batch
         if self.dataload_cb:
             x = self.dataload_cb(x)
-        y_hat = self(x)
+        y_hat, _ = self(x)
 
         probs = F.softmax(y_hat, dim=1)
         self.valid_probs.append(probs.cpu().detach().numpy())

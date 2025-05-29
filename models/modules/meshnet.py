@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from .classifier import NonLinearClassifier
 
 class SpatialDescriptor(nn.Module):
 
@@ -164,10 +165,8 @@ class MeshConvolution(nn.Module):
 
 class MeshNet(nn.Module):
 
-    def __init__(self, n_kernel, sigma, aggregation_method, require_feat=False, output_channels=40):
+    def __init__(self, n_kernel, sigma, aggregation_method="Average", d_embed = 512, dropout=0.3, output_channels=40):
         super(MeshNet, self).__init__()
-
-        self.require_feat = require_feat
 
         self.spatial_descriptor = SpatialDescriptor()
         self.structrual_desciptor = StrcuturalDescriptor(n_kernel, sigma)
@@ -184,14 +183,26 @@ class MeshNet(nn.Module):
             nn.BatchNorm1d(1024),
             nn.ReLU()
         )
-        self.classifier = nn.Sequential(
-            nn.Linear(1024, 512),
+        # self.classifier = nn.Sequential(
+        #     nn.Linear(d_embed, 512),
+        #     nn.ReLU(),
+        #     nn.Dropout(p=0.5),
+        #     nn.Linear(512, 256),
+        #     nn.ReLU(),
+        #     nn.Dropout(p=0.5),
+        #     nn.Linear(256, output_channels)
+        # )
+        self.linear = nn.Sequential(
+            nn.Linear(1024, d_embed, bias=False),
+            nn.BatchNorm1d(d_embed),
             nn.ReLU(),
-            nn.Dropout(p=0.5),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(p=0.5),
-            nn.Linear(256, output_channels)
+            nn.Dropout(p=dropout)
+        )
+
+        self.classifier = NonLinearClassifier(
+            input_dim=d_embed, 
+            num_classes=output_channels, 
+            dropout=dropout
         )
 
     def forward(self, x):
@@ -211,10 +222,7 @@ class MeshNet(nn.Module):
         feat = self.concat_mlp(torch.cat([spatial_feat1, spatial_feat2, spatial_feat3], 1))
         feat = torch.max(feat, dim=2)[0]
         feat = feat.reshape(feat.size(0), -1)
-        feat = self.classifier[:-1](feat)
-        y = self.classifier[-1:](feat)
 
-        if self.require_feat:
-            return y, feat / torch.norm(feat)
-        else:
-            return y
+        feat = self.linear(feat)
+        y = self.classifier(feat)
+        return y, feat
